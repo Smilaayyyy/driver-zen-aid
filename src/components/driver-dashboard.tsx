@@ -19,6 +19,7 @@ import {
 import { ChatInterface } from "./chat-interface";
 import { DriveInterface } from "./drive-interface";
 import { FormInterface } from "./form-interface";
+import type { Language, AssistanceMode } from "./onboarding-flow";
 
 // Mock data as provided
 const mockData = {
@@ -41,6 +42,10 @@ const mockData = {
 export function DriverDashboard() {
   const [currentMode, setCurrentMode] = useState<AppMode>("chat");
   const [isListening, setIsListening] = useState(false);
+  
+  // These would typically come from user settings/context
+  const userLanguage: Language = { code: 'en', name: 'English', nativeName: 'English' };
+  const userAssistanceMode: AssistanceMode = 'voice';
 
   const handleModeChange = (mode: AppMode) => {
     setCurrentMode(mode);
@@ -53,13 +58,39 @@ export function DriverDashboard() {
   const renderModeInterface = () => {
     switch (currentMode) {
       case "chat":
-        return <ChatInterface mockData={mockData} isListening={isListening} />;
+        return (
+          <ChatInterface 
+            mockData={mockData} 
+            isListening={isListening}
+            language={userLanguage.code}
+            assistanceMode={userAssistanceMode}
+          />
+        );
       case "drive":
-        return <DriveInterface isListening={isListening} />;
+        return (
+          <DriveInterface 
+            isListening={isListening}
+            language={userLanguage.code}
+            assistanceMode={userAssistanceMode}
+          />
+        );
       case "form":
-        return <FormInterface isListening={isListening} />;
+        return (
+          <FormInterface 
+            isListening={isListening}
+            language={userLanguage.code}
+            assistanceMode={userAssistanceMode}
+          />
+        );
       default:
-        return <ChatInterface mockData={mockData} isListening={isListening} />;
+        return (
+          <ChatInterface 
+            mockData={mockData} 
+            isListening={isListening}
+            language={userLanguage.code}
+            assistanceMode={userAssistanceMode}
+          />
+        );
     }
   };
 

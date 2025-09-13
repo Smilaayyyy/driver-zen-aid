@@ -30,14 +30,37 @@ interface DriveAlert {
 
 interface DriveInterfaceProps {
   isListening: boolean;
+  language: string;
+  assistanceMode: 'voice' | 'chat';
 }
 
-export function DriveInterface({ isListening }: DriveInterfaceProps) {
+export function DriveInterface({ isListening, language, assistanceMode }: DriveInterfaceProps) {
   const [isDriving, setIsDriving] = useState(false);
   const [alerts, setAlerts] = useState<DriveAlert[]>([]);
   const [currentLocation, setCurrentLocation] = useState("Sector 18, Noida");
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [speed, setSpeed] = useState(0);
+  const [isPlayingAlert, setIsPlayingAlert] = useState(false);
+
+  // Play TTS alert
+  const playAlert = async (text: string) => {
+    if (assistanceMode !== 'voice' || !audioEnabled) return;
+    
+    try {
+      setIsPlayingAlert(true);
+      // For demo, using Web Speech API as fallback
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+        utterance.onend = () => setIsPlayingAlert(false);
+      }
+    } catch (error) {
+      console.error('Alert TTS failed:', error);
+      setIsPlayingAlert(false);
+    }
+  };
 
   // Mock GPS and alert system
   useEffect(() => {
@@ -85,7 +108,7 @@ export function DriveInterface({ isListening }: DriveInterfaceProps) {
 
         // Simulate TTS announcement
         if (audioEnabled && randomAlert.requiresAction) {
-          console.log("TTS:", randomAlert.message);
+          playAlert(randomAlert.message);
         }
       }, 8000);
 
@@ -152,6 +175,12 @@ export function DriveInterface({ isListening }: DriveInterfaceProps) {
               {isListening && (
                 <Badge variant="destructive" className="animate-pulse">
                   Voice Active
+                </Badge>
+              )}
+              {isPlayingAlert && (
+                <Badge variant="secondary" className="animate-pulse">
+                  <Volume2 className="h-3 w-3 mr-1" />
+                  Alert Playing
                 </Badge>
               )}
             </div>

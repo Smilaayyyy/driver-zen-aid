@@ -39,11 +39,14 @@ interface DocumentUpload {
 
 interface FormInterfaceProps {
   isListening: boolean;
+  language: string;
+  assistanceMode: 'voice' | 'chat';
 }
 
-export function FormInterface({ isListening }: FormInterfaceProps) {
+export function FormInterface({ isListening, language, assistanceMode }: FormInterfaceProps) {
   const [activeTab, setActiveTab] = useState("documents");
   const [documents, setDocuments] = useState<DocumentUpload[]>([]);
+  const [isPlayingTips, setIsPlayingTips] = useState(false);
   const [formFields, setFormFields] = useState<FormField[]>([
     { id: "name", label: "Full Name", value: "", isValid: false },
     { id: "phone", label: "Phone Number", value: "", isValid: false },
@@ -52,6 +55,26 @@ export function FormInterface({ isListening }: FormInterfaceProps) {
     { id: "aadhar", label: "Aadhar Number", value: "", isValid: false },
     { id: "pan", label: "PAN Number", value: "", isValid: false },
   ]);
+
+  // Play TTS tips
+  const playTips = async (text: string) => {
+    if (assistanceMode !== 'voice') return;
+    
+    try {
+      setIsPlayingTips(true);
+      // For demo, using Web Speech API as fallback
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+        utterance.onend = () => setIsPlayingTips(false);
+      }
+    } catch (error) {
+      console.error('Tips TTS failed:', error);
+      setIsPlayingTips(false);
+    }
+  };
 
   const documentTypes = [
     { id: "aadhar", label: "Aadhar Card", icon: User, required: true },
@@ -98,8 +121,11 @@ export function FormInterface({ isListening }: FormInterfaceProps) {
       ));
 
       // Simulate TTS feedback
-      if (isListening) {
-        console.log("TTS: Document processed. Please check for any issues highlighted.");
+      if (assistanceMode === 'voice') {
+        const message = Math.random() > 0.3 
+          ? `Document processed successfully. All information extracted correctly.`
+          : `Document processed with issues. Please check the highlighted problems.`;
+        playTips(message);
       }
     }, 2000);
   };
@@ -183,6 +209,12 @@ export function FormInterface({ isListening }: FormInterfaceProps) {
             {isListening && (
               <Badge variant="destructive" className="animate-pulse">
                 Voice Active
+              </Badge>
+            )}
+            {isPlayingTips && (
+              <Badge variant="secondary" className="animate-pulse">
+                <Volume2 className="h-3 w-3 mr-1" />
+                Playing Tips
               </Badge>
             )}
           </CardTitle>

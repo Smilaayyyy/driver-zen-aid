@@ -15,9 +15,12 @@ import {
   CreditCard,
   Shield,
   FileText,
-  HelpCircle
+  HelpCircle,
+  Volume2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
+import { apiService } from "@/services/api";
 
 interface ChatMessage {
   id: string;
@@ -31,9 +34,11 @@ interface ChatMessage {
 interface ChatInterfaceProps {
   mockData: any;
   isListening: boolean;
+  language: string;
+  assistanceMode: 'voice' | 'chat';
 }
 
-export function ChatInterface({ mockData, isListening }: ChatInterfaceProps) {
+export function ChatInterface({ mockData, isListening, language, assistanceMode }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -45,7 +50,10 @@ export function ChatInterface({ mockData, isListening }: ChatInterfaceProps) {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const audioRecorder = useAudioRecorder();
 
   const quickActions = [
     { label: "Today's Earnings", intent: "earnings", icon: TrendingUp },
@@ -56,42 +64,98 @@ export function ChatInterface({ mockData, isListening }: ChatInterfaceProps) {
     { label: "Help", intent: "help", icon: HelpCircle }
   ];
 
+  // Play TTS audio
+  const playTTS = async (text: string) => {
+    if (assistanceMode !== 'voice') return;
+    
+    try {
+      setIsPlayingAudio(true);
+      const audioBlob = await apiService.textToSpeech(text);
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        await audioRef.current.play();
+      }
+    } catch (error) {
+      console.error('TTS failed:', error);
+    } finally {
+      setIsPlayingAudio(false);
+    }
+  };
+
+  // Process voice input
+  const handleVoiceInput = async () => {
+    if (audioRecorder.isRecording) {
+      audioRecorder.stopRecording();
+    } else {
+      audioRecorder.startRecording();
+    }
+  };
+
+  // Process audio when recording stops
+  useEffect(() => {
+    if (audioRecorder.audioBlob && !audioRecorder.isRecording) {
+      const processAudio = async () => {
+        try {
+          const audioFile = audioRecorder.getAudioFile();
+          if (audioFile) {
+            setIsProcessing(true);
+            const sttResult = await apiService.speechToText(audioFile);
+            await handleSendMessage(sttResult.transcribed_text);
+            audioRecorder.clearRecording();
+          }
+        } catch (error) {
+          console.error('Voice processing failed:', error);
+          setIsProcessing(false);
+        }
+      };
+      processAudio();
+    }
+  }, [audioRecorder.audioBlob, audioRecorder.isRecording]);
+
   // Intent detection and response generation
   const processQuery = async (query: string): Promise<string> => {
-    const lowerQuery = query.toLowerCase();
-    
-    // Earnings queries
-    if (lowerQuery.includes("earning") || lowerQuery.includes("income") || lowerQuery.includes("money")) {
-      if (lowerQuery.includes("today")) {
-        return `Today's earnings: Gross ₹${mockData.earnings.today.gross}, Expenses ₹${mockData.earnings.today.expenses}, Penalties ₹${mockData.earnings.today.penalty}, Net ₹${mockData.earnings.today.net}. ${mockData.advice?.earnings || ""}`;
-      } else if (lowerQuery.includes("week")) {
-        return `This week's earnings: Gross ₹${mockData.earnings.this_week.gross}, Net ₹${mockData.earnings.this_week.net}. You're doing great!`;
+    try {
+      const intentResult = await apiService.processIntent(query, 'chat');
+      
+      // Play TTS if available
+      if (intentResult.tts_ready) {
+        playTTS(intentResult.tts_ready);
       }
-      return `Your recent earnings - Today: ₹${mockData.earnings.today.net} net, This week: ₹${mockData.earnings.this_week.net} net.`;
-    }
+      
+      return intentResult.answer;
+    } catch (error) {
+      // Fallback to mock responses
+      const lowerQuery = query.toLowerCase();
+      
+      if (lowerQuery.includes("earning") || lowerQuery.includes("income") || lowerQuery.includes("money")) {
+        if (lowerQuery.includes("today")) {
+          return `Today's earnings: Gross ₹${mockData.earnings.today.gross}, Expenses ₹${mockData.earnings.today.expenses}, Penalties ₹${mockData.earnings.today.penalty}, Net ₹${mockData.earnings.today.net}`;
+        } else if (lowerQuery.includes("week")) {
+          return `This week's earnings: Gross ₹${mockData.earnings.this_week.gross}, Net ₹${mockData.earnings.this_week.net}`;
+        }
+        return `Your recent earnings - Today: ₹${mockData.earnings.today.net} net, This week: ₹${mockData.earnings.this_week.net} net`;
+      }
 
-    // Penalty queries
-    if (lowerQuery.includes("penalty") || lowerQuery.includes("fine") || lowerQuery.includes("violation")) {
-      return `Recent penalties: Late delivery ₹200, Traffic violation ₹500, Other ₹100. ${mockData.advice?.penalties || ""}`;
-    }
+      if (lowerQuery.includes("penalty") || lowerQuery.includes("fine")) {
+        return `Recent penalties: Late delivery ₹200, Traffic violation ₹500, Other ₹100`;
+      }
 
-    // Loan queries
-    if (lowerQuery.includes("loan") || lowerQuery.includes("emi") || lowerQuery.includes("installment")) {
-      return `Loan details: Balance ₹50,000, Next installment ₹5,000 due on ${mockData.loan.due_date}. ${mockData.advice?.loan || ""}`;
-    }
+      if (lowerQuery.includes("loan") || lowerQuery.includes("emi")) {
+        return `Loan details: Balance ₹50,000, Next installment ₹5,000 due on ${mockData.loan.due_date}`;
+      }
 
-    // Insurance queries
-    if (lowerQuery.includes("insurance") || lowerQuery.includes("policy")) {
-      return `Insurance Status: ${mockData.insurance.premium_status} - Policy ${mockData.insurance.policy_number}, Coverage: ${mockData.insurance.coverage}, Expires: ${mockData.insurance.expiry}`;
-    }
+      if (lowerQuery.includes("insurance") || lowerQuery.includes("policy")) {
+        return `Insurance Status: ${mockData.insurance.premium_status} - Policy ${mockData.insurance.policy_number}`;
+      }
 
-    // Document queries
-    if (lowerQuery.includes("document") || lowerQuery.includes("paper") || lowerQuery.includes("kyc")) {
-      return "For document assistance, please switch to Form Mode. I can help you with Aadhar, PAN, Vehicle RC, and other document verification.";
-    }
+      if (lowerQuery.includes("document")) {
+        return "For document assistance, please switch to Form Mode";
+      }
 
-    // Default response
-    return "I can help you with earnings, penalties, loans, insurance, and documents. Please ask me about any of these topics or use the quick action buttons below.";
+      return "I can help you with earnings, penalties, loans, insurance, and documents. Please ask me about any of these topics";
+    }
   };
 
   const handleSendMessage = async (content: string) => {
@@ -263,16 +327,57 @@ export function ChatInterface({ mockData, isListening }: ChatInterfaceProps) {
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Ask about earnings, penalties, loans, insurance..."
             onKeyPress={(e) => e.key === "Enter" && handleSendMessage(inputValue)}
-            disabled={isProcessing}
+            disabled={isProcessing || audioRecorder.isRecording}
           />
+          
+          {assistanceMode === 'voice' && (
+            <Button
+              onClick={handleVoiceInput}
+              disabled={isProcessing}
+              size="icon"
+              variant={audioRecorder.isRecording ? "destructive" : "outline"}
+              className={cn(
+                audioRecorder.isRecording && "animate-pulse"
+              )}
+            >
+              {audioRecorder.isRecording ? (
+                <MicOff className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+          
           <Button
             onClick={() => handleSendMessage(inputValue)}
-            disabled={isProcessing || !inputValue.trim()}
+            disabled={isProcessing || !inputValue.trim() || audioRecorder.isRecording}
             size="icon"
           >
             <Send className="h-4 w-4" />
           </Button>
+          
+          {isPlayingAudio && (
+            <Button size="icon" variant="ghost" disabled>
+              <Volume2 className="h-4 w-4 animate-pulse" />
+            </Button>
+          )}
         </div>
+        
+        {/* Hidden audio element for TTS playback */}
+        <audio 
+          ref={audioRef} 
+          onEnded={() => setIsPlayingAudio(false)}
+          className="hidden"
+        />
+        
+        {/* Recording indicator */}
+        {audioRecorder.isRecording && (
+          <div className="text-center">
+            <Badge variant="destructive" className="animate-pulse">
+              Recording... {Math.round(audioRecorder.duration / 1000)}s
+            </Badge>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
