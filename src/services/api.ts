@@ -1,5 +1,5 @@
 // API service for FastAPI backend integration
-const API_BASE_URL = 'https://your-ngrok-url';
+const API_BASE_URL = 'https://755d15304f79.ngrok-free.app/';
 
 export interface STTResponse {
   transcribed_text: string;
